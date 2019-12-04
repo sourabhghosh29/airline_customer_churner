@@ -15,6 +15,11 @@ rm(list=ls()) # Clear all user objects from the environment!!!
 # Change to the folder containing your homework data files
 setwd("/Users/mistr/OneDrive/Documents/IST687/Homework")
 
+#install.packages("glmnet")
+#install.packages("ordinal")
+#install.packages("rpart")
+#install.packages("randomForest")
+
 library(tidyverse)
 library(RCurl)
 library(jsonlite)
@@ -24,10 +29,18 @@ library(ggmap)
 library(arules)
 library(arulesViz)
 library(tm)
+library(ordinal)
+library(caret)
+library(glmnet)
+library(rpart)
+library(randomForest)
+
 
 df_nps <- jsonlite::fromJSON("./fall2019-survey-M09.json")
 View(df_nps)
 
+
+# When we remove na values, the na values mean flight is cancelled. Hence we only get the data for flights which are not cancelled
 df_nps_complete <- df_nps[complete.cases(df_nps[,-32]),]
 View(df_nps_complete)
 
@@ -49,9 +62,16 @@ ggplot(df_nps, aes(y=df_nps$Likelihood.to.recommend, x = df_nps$Destination.City
 df_nps_complete$type_passenger <- cut(df_nps_complete$Likelihood.to.recommend,
                              breaks = c(-1,7,9,Inf),
                              labels = c("detractor","passive","promoter"))
+
 glimpse(df_nps_complete)
 
 df_nps_complete$type_passenger <- factor(df_nps_complete$type_passenger, ordered = TRUE)
+
+# Create recommender_Type factor, not ordered
+#df_nps_complete$recommender_type <- cut(df_nps_complete$Likelihood.to.recommend,
+#                                      breaks = c(-1,7,9,Inf),
+#                                      labels = c("detractor","passive","promoter"))
+
 df_nps_complete$type_passenger[which(is.na(df_nps_complete$type_passenger))] = "passive"
 
 str(df_nps_complete$type_passenger)
@@ -92,6 +112,9 @@ df_nps_complete$Origin.City<- factor(df_nps_complete$Origin.City, labels = uniqu
 df_nps_complete$Origin.State<- factor(df_nps_complete$Origin.State, labels = unique(df_nps_complete$Origin.State)[order(unique(df_nps_complete$Origin.State))])
 df_nps_complete$Destination.City<- factor(df_nps_complete$Destination.City, labels = unique(df_nps_complete$Destination.City)[order(unique(df_nps_complete$Destination.City))])
 df_nps_complete$Destination.State<- factor(df_nps_complete$Destination.State, labels = unique(df_nps_complete$Destination.State)[order(unique(df_nps_complete$Destination.State))])
+#df_nps_complete$Flight.cancelled <- factor(df_nps_complete$Flight.cancelled, labels = c("No","Yes"))
+#table(df_nps_complete$Flight.cancelled)
+
 #View(df_nps_complete)
 str(df_nps_complete)
 
@@ -115,7 +138,7 @@ ggplot(df_nps_complete, aes(x = "",y = "", fill = type_passenger))+
 # Apriori Transactions
 glimpse(df_nps_complete)
 dim(df_nps_complete)
-df_nps_complete1 = df_nps_complete[,c(3,5,10,14,33,34,35,36)]
+df_nps_complete1 = df_nps_complete[,c(1,2,3,7,8,9,10,14,15,16,17,19,20,33,34,35,36,37,38)]
 
 apply(apply(df_nps_complete1, 2, is.na), 2, which)
 df_nps_complete1$type_passenger[which(is.na(df_nps_complete1$type_passenger))] = "passive"
@@ -130,7 +153,7 @@ ruleset <- apriori(df_nps_completeX,
                    # Specify threshold of 0.005 for support, and 0.5 for confidence. That is, show only those values that are higher than the thresholds.
                    parameter = list(support=0.05, confidence = 0.05, minlen = 3),
                    # Specify the rhs as "Survived = Yes", and all the rest of the variables of the transaction as lhs of the equation
-                   appearance = list(default="lhs", rhs = ("type_passenger=promoter")))
+                   appearance = list(default="lhs", rhs = ("type_passenger=passive")))
 inspect(ruleset)
 inspectDT(ruleset)
 
@@ -154,6 +177,55 @@ inspectDT(ruleset)
 # {Airline.Status=Blue,Gender=Female,Type.of.Travel=Personal Travel}	{type_passenger=detractor}	0.140	0.897	2.021	1,441.000
 
 
+# Ordinal Regression
+
+l <- sapply(df_nps_complete, function(x) is.factor(x))
+
+sapply(df_nps_complete[,l], function(x) length(levels(x)))
+
+o.model <- clm(recommender_type ~., data = df_nps_complete[,c(3,4,6:15,21:23,25,26,39)])
+summary(o.model)
+
+
+# Linear Regression
+
+l.model <- lm(Likelihood.to.recommend ~., data = df_nps_complete[,c(3,4,6:15,21:23,25,26,27)])
+summary(l.model)
+
+# elastic regression
+
+set.seed(123)
+
+x <- model.matrix(Likelihood.to.recommend~., df_nps_complete[,c(3,4,6:15,21:23,25,26,27)])[,-1]
+y <- df_nps_complete$Likelihood.to.recommend
+
+e.model = cv.glmnet(as.matrix(x),y,alpha = 0,lambda = 10^seq(4,-1,-0.1))
+#Taking the best lambda
+best_lambda = e.model$lambda.min
+en_coeff = predict(e.model,s = best_lambda,type = "coefficients")
+en_predicton = predict(e.model,s = best_lambda, x)
+#en_predicton
+#summary(e.model)
+# Model performance metrics
+data.frame(
+  RMSE = RMSE(en_predicton, df_nps_complete$Likelihood.to.recommend),
+  Rsquare = R2(en_predicton, df_nps_complete$Likelihood.to.recommend)
+)
+
+#Classification Tree
+fit <- rpart(type_passenger ~., data = df_nps_complete[,c(3,4,6:15,21:23,25,26,33)], method = "class")
+summary(fit)
+
+# Random Forrest
+
+random_forest <- randomForest(type_passenger ~., data = df_nps_complete[,c(3,4,6:15,21:23,25,26,33)],importance = TRUE, proximity = TRUE,ntree=500)
+summary(random_forest)
+print(random_forest)
+# importance
+round(importance(random_forest),2)
+
+
+# plots
 boxplot(df_nps_complete$Age ~ df_nps_complete$type_passenger)
 
 # type_passenger vs Price.Sensitivity
@@ -275,6 +347,9 @@ ggplot(df_nps_complete, aes(Eating.and.Drinking.at.Airport))+
 
 ggplot(df_nps_complete, aes(Age))+
   geom_histogram(aes(fill = type_passenger), bins = 10, color = 'Black')
+
+ggplot(df_nps_complete, aes(Age))+
+  geom_histogram(aes(fill = Gender), bins = 10, color = 'Black')
 
 ggplot(df_nps_complete, aes(Price.Sensitivity))+
   geom_histogram(aes(fill = type_passenger), bins = 10, color = 'Black')
