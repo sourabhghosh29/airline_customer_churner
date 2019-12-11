@@ -9,6 +9,13 @@ library(caret)
 par(mar = c(5, 8, 1, 1))
 library(randomForest)
 
+set.seed(88)
+#splitting data into training and test data set for logistic regression 
+split <- sample.split(df_new$Likelihood.to.recommend, SplitRatio = 0.75)
+train <- subset(df_new, split == TRUE)
+test <- subset(df_new, split == FALSE)
+
+#function that returns random forest feature importance plots
 create_rfplot <- function(rf_default, type){
   
   imp <- importance(rf_default, type = type, scale = F)
@@ -25,6 +32,8 @@ create_rfplot <- function(rf_default, type){
           axis.text.y  = element_text(size = 15, color = "black")) 
   return(p)
 }
+
+#####Random forest model after parameter tuning the best model performs with 200 trees
 rf1 <- randomForest(
   Likelihood.to.recommend ~ .,  
   ntree = 200,
@@ -33,17 +42,20 @@ rf1 <- randomForest(
   replace = FALSE,
   importance = TRUE
 )     
+#printing output of random forest
 print(rf1)
+#plotting feature importance graph of random forest
 create_rfplot(rf1, type = 2)
 
+#Calculating AUC for the model
 library(ROCR)
 p <- predict(rf1, newdata=subset(test), type="response")
 pr <- prediction(p, test$Likelihood.to.recommend)
 auc <- performance(pr, measure = "auc")
 print(auc)
-#with arrival delay
-#0.8471364
+#AUC 0.8471364
 
+#calculating Accuracy of the model
 fitted.results_rf <- predict(rf1,newdata=subset(test),type='response')
 fitted.results_rf <- ifelse(fitted.results_rf > 0.4,1,0)
 

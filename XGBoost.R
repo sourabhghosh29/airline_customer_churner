@@ -11,6 +11,7 @@ library(xgboost)
 library(caTools)
 
 set.seed(88)
+#splitting the data into test and train data set
 split <- sample.split(df_new$Likelihood.to.recommend, SplitRatio = 0.75)
 train <- subset(df_new, split == TRUE)
 test <- subset(df_new, split == FALSE)
@@ -18,12 +19,15 @@ set.seed(123)
 # for reproducibility
 set.seed(123)
 
+#feature engineering for xgboost converting features into sparse matrix
 sparse_matrix <- sparse.model.matrix(Likelihood.to.recommend~.-1, data = train)
 output_vector = train$Likelihood.to.recommend
 
+#xgboost model
 bst <- xgboost(data = sparse_matrix, label = output_vector, max.depth = 4,
                eta = 1, nthread = 2, nrounds = 10,objective = "binary:logistic")
 
+#determining and plotting top 10 feature importances
 importance <- xgb.importance(feature_names = sparse_matrix@Dimnames[[2]], model = bst)
 importanceRaw <- xgb.importance(feature_names = sparse_matrix@Dimnames[[2]], model = bst, data = sparse_matrix, label = output_vector)
 xgb.plot.importance(importance_matrix = importanceRaw[1:10])
@@ -36,7 +40,6 @@ x_train <-train%>% select(Partner.Name,Age,Gender,Airline.Status,Price.Sensitivi
                                ,Flight.Distance,Flight.cancelled) %>% data.matrix()
 
 
-importance <- xgb.importance(feature_names = sparse_matrix@Dimnames[[2]], model = bst)
 dtrain <- xgb.DMatrix(x_train, label = y_train)
 y_test <- test$Likelihood.to.recommend
 
@@ -44,6 +47,7 @@ x_test <-test%>% select(Partner.Name,Age,Gender,Airline.Status,Price.Sensitivity
                         ,Class,Flights.Per.Year,Departure.Delay.in.Minutes,Arrival.Delay.in.Minutes,Flight.time.in.minutes
                         ,Flight.Distance,Flight.cancelled) %>% data.matrix()
 
+#Calculating generalization performance measue AUC
 sparse_matrix_test <- sparse.model.matrix(Likelihood.to.recommend~.-1, data = test)
 output_vector_test = test$Likelihood.to.recommend
 pred <- predict(bst, sparse_matrix_test)
@@ -51,6 +55,7 @@ pr <- prediction(pred, output_vector_test)
 auc <- performance(pr, measure = "auc")
 print(auc)
 
+#Calculating model Accuracy
 fitted.results_gbm <- predict(bst,sparse_matrix_test)
 fitted.results_gbm <- ifelse(fitted.results_gbm > 0.5,1,0)
 
