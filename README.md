@@ -6,7 +6,7 @@ The project is structured for various analysis starting from data cleaning, feat
 
 Please find all the details of the project with explanation in report file named "AirlineCustomerSatisfaction.pdf"
 
-Also find the presentation to client identifying most critical features affecting satisfaction recommending profitable marketing strategies in file "Recommendation.pptx"
+Also find the presentation to client identifying most critical features affecting satisfaction recommending profitable marketing strategies in file "Recommendation.pdf"
 
 
 
